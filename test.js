@@ -1,95 +1,105 @@
-/*var NodeWebcam = require( "node-webcam" );
-//Default options
+const http = require('http');
+const fs = require('fs');
+const mime = require('mime');
 
-var opts = {
-    //Picture related
-    width: 1280,
-    height: 720,
-    quality: 100,
-    // Number of frames to capture
-    // More the frames, longer it takes to capture
-    // Use higher framerate for quality. Ex: 60
-    frames: 60,
-    //Delay in seconds to take shot
-    //if the platform supports miliseconds
-    //use a float (0.1)
-    //Currently only on windows
-    delay: 0,
-    //Save shots in memory
-    saveShots: true,
-    // [jpeg, png] support varies
-    // Webcam.OutputTypes
-    output: "jpeg",
-    //Which camera to use
-    //Use Webcam.list() for results
-    //false for default device
-    device: false,
-    // [location, buffer, base64]
-    // Webcam.CallbackReturnTypes
-    callbackReturn: "location",
-    //Logging
-    verbose: false
+const Gpio = require('onoff').Gpio;
+const LED = new Gpio(18, 'out');
+// n번포트 사용
+
+const RaspiCam = require("raspicam");
+const { sleep } = require('raspicam/lib/fn');
+
+const cameraOptions = {
+    width: 1920,
+    height: 1080,
+    mode: "video",      // 동영상 촬영 모드
+    output: "/home/pi/temp/video/video.h264"
+    //timeout: ,        촬영 시간
 };
 
-//Creates webcam instance
-var Webcam = NodeWebcam.create( opts );
+const camera = new RaspiCam(cameraOptions);
 
-//Will automatically append location output type
-Webcam.capture( "test_picture", function( err, data ) {} );
+const ffmpeg = require("fluent-ffmpeg");
+//to take a snapshot, start a timelapse or video recording
 
-//Also available for quick use
-NodeWebcam.capture( "test_picture", opts, function( err, data ) {
-});
+const server = http.createServer()
 
-//Get list of cameras
-Webcam.list( function( list ) {
-    //Use another device
-    var anotherCam = NodeWebcam.create( { device: list[ 0 ] } );
-});
-
-//Return type with base 64 image
-var opts = {
-    callbackReturn: "base64"
-};
-
-NodeWebcam.capture( "test_picture", opts, function( err, data ) {
-    var image = "<img src='" + data + "'>";
-});*/
-
-var http = require('http');
-var url = require('url');
-
-var MP4Box = require('mp4box'); // Or whatever import method you prefer.
-var mp4boxfile = MP4Box.createFile();
-
-var ffmpeg = require('ffmpeg');
-
-var camera = ffmpeg()
-  .input('/dev/video0')
-  .inputFormat('mov')
-  .input('/home/pi/temp/file.avi')
-  .inputFormat('avi');
-
-http.createServer(function (req, res) {
-    var parsedUrl = url.parse(req.url);
-    // 2. parsing 된 url 중에 서버URI에 해당하는 pathname 만 따로 저장
-    response = parsedUrl.pathname;
-
-    if(response == '/test'){
+server.on('request', (req, res) => {
+    if (req.url == '/request_behavior') {
+        let date = new Date();
+        let filename = date.getFullYear() + "" + date.getMonth() + "" + date.getDate() + "" + date.getHours() + "" +
+            date.getMinutes() + "" + date.getSeconds();
         console.log("camera start");
-        console.log(camera);
-        console.log("camera end");
+        console.log("cameraOptions mode : " + cameraOptions.mode);
+        camera.start();
+        camera.stop();
 
-        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end("Hello World!");
+        camera.once("exit", function () {
+            const inFilename = "/home/pi/temp/video/video.h264";
+            const outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+
+            console.log("convert start");
+
+            ffmpeg(inFilename)
+                .outputOptions("-c:v", "copy") // this will copy the data instead or reencode it
+                .save(outFilename)
+                .once('end', function () {
+                    console.log('convert end');
+                    
+                    console.log("push video start");
+                    const videoMime = mime.getType(outFilename);
+                    fs.readFile(outFilename, function (error, data) {
+                        if (error) {
+                            console.log("file error");
+                            res.writeHead(500, { 'Content-Type': 'text/html' });
+                            res.end('500 Internal Server ' + error);
+                        } else {
+                            console.log("file success");
+                            // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
+                            res.writeHead(200, { 'Content-Type': videoMime });
+                            res.end(data);
+                        }
+                    });
+                    console.log("push video end");
+                })
+            console.log("camera END ");
+        });
+    } 
+
+    else if (req.url == '/on') {
+        console.log("LED start");
+        isLED();
+        console.log("LED end");
+
+        let temp = {
+            id : "Hello",
+            name : "Hi"
+        }
+        // json방식으로 데이터를 보내기 위함
+
+        //res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        //res.end("Hello World!");
+
+        res.writeHead('200', {'Content-Type': 'application/json; charset=utf8'});
+        // json타입으로 포매팅
+        res.write(JSON.stringify(temp));
+        // 포매팅을 하고 temp를 넣어준다.
+        //res.end("Hello World!");
+    } 
+
+    else {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('404 Page Not Found');
     }
 }).listen(8080);
 
-//ffmpeg -f video4linux2 -r 25 -s 640x480 -t 00:10 -i /dev/video0 out.avi
-
-mp4boxfile.onReady = function (info) {
-    
-
-	console.log("Received File Information");
+function isLED() {
+    if (LED.readSync() == 0) {
+        // LED가 꺼져있을 경우
+        console.log("LED ON");
+        LED.writeSync(1);
+    } else {
+        console.log("LED off");
+        LED.writeSync(0);
+    }
 }
-

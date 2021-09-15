@@ -30,25 +30,26 @@ http.createServer(function (req, res) {
 
     if (response == '/request_behavior') {
         const date = new Date();
-        const filename = date.getFullYear() + "" + date.getMonth() + 1 + "" + date.getDate() + "" + date.getHours() + "" +
+        const filename = date.getFullYear() + "" + (date.getMonth() + 1) + "" + date.getDate() + "" + date.getHours() + "" +
             date.getMinutes() + "" + date.getSeconds();
         console.log("camera start");
         console.log("cameraOptions mode : " + cameraOptions.mode);
         camera.start();
 
-        camera.on("exit", function () {
+        camera.once("exit", function () {
             var inFilename = "/home/pi/temp/video/video.h264";
             var outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+
+            console.log("convert start");
 
             ffmpeg(inFilename)
                 .outputOptions("-c:v", "copy") // this will copy the data instead or reencode it
                 .save(outFilename)
-                .on('end', function () {
-                    console.log('Finished processing');
-
+                .once('end', function () {
+                    console.log('convert end');
+                    
+                    console.log("push video start");
                     var videoMime = mime.getType(outFilename);
-                    console.log('mime=' + videoMime);
-
                     fs.readFile(outFilename, function (error, data) {
                         if (error) {
                             console.log("file error");
@@ -61,8 +62,8 @@ http.createServer(function (req, res) {
                             res.end(data);
                         }
                     });
+                    console.log("push video end");
                 })
-
             console.log("camera END ");
         });
     } else {
@@ -75,8 +76,11 @@ http.createServer(function (req, res) {
         isLED();
         console.log("LED end");
 
-        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end("Hello World!");
+    } else {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('404 Page Not Found');
     }
 }).listen(8080);
 

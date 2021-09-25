@@ -2,8 +2,6 @@ const http = require('http');
 const fs = require('fs');
 const mime = require('mime');
 
-const live = require('/home/pi/live/index.js')
-
 const Gpio = require('onoff').Gpio;
 const LED = new Gpio(18, 'out');
 // n번포트 사용
@@ -24,6 +22,25 @@ const camera = new RaspiCam(cameraOptions);
 const ffmpeg = require("fluent-ffmpeg");
 //to take a snapshot, start a timelapse or video recording
 
+// start capture
+const videoStream = require('./videoStream');
+
+const express = require('express')
+const app = express();
+const port = 3000;
+
+videoStream.acceptConnections(app, {
+        width: 1280,
+        height: 720,
+        fps: 16,
+        encoding: 'JPEG',
+        quality: 7 // lower is faster, less quality
+    }, 
+    '/stream.mjpg', false);
+
+app.use(express.static(__dirname+'/public'));
+app.listen(port, () => console.log(`Example app listening on port ${port}! In your web browser, navigate to http://<IP_ADDRESS_OF_THIS_SERVER>:3000`));
+
 const server = http.createServer()
 
 server.on('request', (req, res) => {
@@ -34,6 +51,9 @@ server.on('request', (req, res) => {
         console.log("camera start");
         console.log("cameraOptions mode : " + cameraOptions.mode);
         camera.start();
+        camera.once("start", function(){
+            videoStream.pauseCamera();
+        });
 
         camera.once("exit", function () {
             const inFilename = "/home/pi/temp/video/video.h264";
@@ -61,6 +81,7 @@ server.on('request', (req, res) => {
                                 "Content-Disposition": "attachment;filename=" + outFilename,
                                 'Content-Type': videoMime
                             });
+                            videoStream.resumeCamera();
                             res.end(data);
                         }
                     });
@@ -95,4 +116,3 @@ function isLED() {
         LED.writeSync(0);
     }
 }
-

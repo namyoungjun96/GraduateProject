@@ -25,5 +25,17 @@ camera.on("stop", function(){
 
 //listen for the process to exit when the timeout has been reached
 camera.on("exit", function(){
-	//do stuff
+	const inFilename = "/home/pi/temp/video/video.h264";
+	const outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+
+
 });
+
+class Camera_mod{
+	constructor(width, height, mode, output) {
+		this.width = width;
+		this.height = height;
+		this.mode = mode;
+		this.output = output;
+	}
+}

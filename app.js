@@ -22,6 +22,7 @@ const camera = new RaspiCam(cameraOptions);
 const ffmpeg = require("fluent-ffmpeg");
 //to take a snapshot, start a timelapse or video recording
 
+
 // start capture
 const videoStream = require('./videoStream');
 
@@ -41,6 +42,7 @@ videoStream.acceptConnections(app, {
 app.use(express.static(__dirname+'/public'));
 app.listen(port, () => console.log(`Example app listening on port ${port}! In your web browser, navigate to http://<IP_ADDRESS_OF_THIS_SERVER>:3000`));
 
+
 const server = http.createServer()
 
 server.on('request', (req, res) => {
@@ -51,9 +53,6 @@ server.on('request', (req, res) => {
         console.log("camera start");
         console.log("cameraOptions mode : " + cameraOptions.mode);
         camera.start();
-        camera.once("start", function(){
-            videoStream.pauseCamera();
-        });
 
         camera.once("exit", function () {
             const inFilename = "/home/pi/temp/video/video.h264";
@@ -81,7 +80,6 @@ server.on('request', (req, res) => {
                                 "Content-Disposition": "attachment;filename=" + outFilename,
                                 'Content-Type': videoMime
                             });
-                            videoStream.resumeCamera();
                             res.end(data);
                         }
                     });

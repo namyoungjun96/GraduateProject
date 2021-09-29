@@ -83,19 +83,6 @@ let videoStream = (function(){
                 });
             });
         },
-        pauseCamera: function(){
-            raspberryPiCamera.pause(function(){
-                console.log("streaming pause");
-            });
-        },
-        resumeCamera: function(){
-            raspberryPiCamera.resume(function(){
-                console.log("streaming resume");
-            });
-        },
-        stopCamera: function(){
-            delete require.cache[name];
-        }
     }
 })();
     

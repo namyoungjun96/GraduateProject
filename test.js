@@ -1,105 +1,92 @@
-const http = require('http');
-const fs = require('fs');
-const mime = require('mime');
+var express = require('express');
+var app = express();
+var http = require('http').Server(app);
+var io = require('socket.io')(http);
+var fs = require('fs');
+var path = require('path');
+var requestIp = require('request-ip');
 
-const Gpio = require('onoff').Gpio;
-const LED = new Gpio(18, 'out');
-// n번포트 사용
+var spawn = require('child_process').spawn;
+var proc;
 
-const RaspiCam = require("raspicam");
-const { sleep } = require('raspicam/lib/fn');
+app.use('/', express.static(path.join(__dirname, 'stream')));
 
-const cameraOptions = {
-    width: 1920,
-    height: 1080,
-    mode: "video",      // 동영상 촬영 모드
-    output: "/home/pi/temp/video/video.h264"
-    //timeout: ,        촬영 시간
-};
 
-const camera = new RaspiCam(cameraOptions);
+app.get('/', function (req, res) {
+    console.log("client IP: " +requestIp.getClientIp(req));
+    res.sendFile(__dirname + '/index.html');
+});
 
-const ffmpeg = require("fluent-ffmpeg");
-//to take a snapshot, start a timelapse or video recording
+var sockets = {};
 
-const server = http.createServer()
+io.on('connection', function (socket) {
 
-server.on('request', (req, res) => {
-    if (req.url == '/request_behavior') {
-        let date = new Date();
-        let filename = date.getFullYear() + "" + date.getMonth() + "" + date.getDate() + "" + date.getHours() + "" +
-            date.getMinutes() + "" + date.getSeconds();
-        console.log("camera start");
-        console.log("cameraOptions mode : " + cameraOptions.mode);
-        camera.start();
-        camera.stop();
+    sockets[socket.id] = socket;
+    console.log("Total clients connected : ", Object.keys(sockets).length);
 
-        camera.once("exit", function () {
-            const inFilename = "/home/pi/temp/video/video.h264";
-            const outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+    socket.on('disconnect', function () {
+        delete sockets[socket.id];
 
-            console.log("convert start");
-
-            ffmpeg(inFilename)
-                .outputOptions("-c:v", "copy") // this will copy the data instead or reencode it
-                .save(outFilename)
-                .once('end', function () {
-                    console.log('convert end');
-                    
-                    console.log("push video start");
-                    const videoMime = mime.getType(outFilename);
-                    fs.readFile(outFilename, function (error, data) {
-                        if (error) {
-                            console.log("file error");
-                            res.writeHead(500, { 'Content-Type': 'text/html' });
-                            res.end('500 Internal Server ' + error);
-                        } else {
-                            console.log("file success");
-                            // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
-                            res.writeHead(200, { 'Content-Type': videoMime });
-                            res.end(data);
-                        }
-                    });
-                    console.log("push video end");
-                })
-            console.log("camera END ");
-        });
-    } 
-
-    else if (req.url == '/on') {
-        console.log("LED start");
-        isLED();
-        console.log("LED end");
-
-        let temp = {
-            id : "Hello",
-            name : "Hi"
+        // no more sockets, kill the stream
+        if (Object.keys(sockets).length == 0) {
+            app.set('watchingFile', false);
+            if (proc) proc.kill();
+            fs.unwatchFile('./stream/image_stream.jpg');
         }
-        // json방식으로 데이터를 보내기 위함
+    });
 
-        //res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        //res.end("Hello World!");
+    socket.on('start-stream', function () {
+        startStreaming(io);
+    });
 
-        res.writeHead('200', {'Content-Type': 'application/json; charset=utf8'});
-        // json타입으로 포매팅
-        res.write(JSON.stringify(temp));
-        // 포매팅을 하고 temp를 넣어준다.
-        //res.end("Hello World!");
-    } 
+});
 
-    else {
-        res.writeHead(404, { 'Content-Type': 'text/html' });
-        res.end('404 Page Not Found');
+http.listen(3000, function () {
+    console.log('listening on *:3000');
+});
+
+function stopStreaming() {
+    if (Object.keys(sockets).length == 0) {
+        app.set('watchingFile', false);
+        if (proc) proc.kill();
+        fs.unwatchFile('./stream/image_stream.jpg');
     }
-}).listen(8080);
+}
 
-function isLED() {
-    if (LED.readSync() == 0) {
-        // LED가 꺼져있을 경우
-        console.log("LED ON");
-        LED.writeSync(1);
-    } else {
-        console.log("LED off");
-        LED.writeSync(0);
+function startStreaming(io) {
+
+    if (app.get('watchingFile')) {
+        io.sockets.emit('liveStream', 'image_stream.jpg?_t=' + (Math.random() * 100000));
+        return;
     }
+
+    var args = ["-w", "640", "-h", "480", "-o", "./stream/image_stream.jpg", "-t", "999999999", "-tl", "50"];
+    proc = spawn('raspistill', args);
+
+    console.log('Watching for changes...');
+
+    app.set('watchingFile', true);
+
+    fs.watchFile('./stream/image_stream.jpg', { bigint: false,persistent: true, interval: 1000}, function (current, previous) {
+        // 파일을 base 64로 인코딩 하기  
+        var base64str = base64_encode('./stream/image_stream.jpg');
+        io.sockets.emit('liveStream', { image: true, buffer: base64str });
+    })
+}
+
+// 파일시스템 모듈을 이용하여 이미지를 읽은후 base64로 인코딩하기  
+function base64_encode(file) {
+    // 바이너리 데이터 읽기 file 에는 파일의 경로를 지정  
+    var bitmap = fs.readFileSync(file);
+    //바이너리 데이터를 base64 포멧으로 인코딩하여 스트링 획등  
+    return new Buffer(bitmap).toString('base64');
+}
+
+// base64포멧의 스트링을 디코딩하여 파일로 쓰는 함수  
+function base64_decode(base64str, file) {
+    // 버퍼 객체를 만든후 첫번째 인자로 base64 스트링, 두번째 인자는 파일 경로를 지정 파일이름만 있으면 프로젝트 root에 생성  
+    var bitmap = new Buffer(base64str, 'base64');
+    // 버퍼의 파일을 쓰기  
+    fs.writeFileSync(file, bitmap);
+    console.log('******** base64로 인코딩되었던 파일 쓰기 성공 ********');
 }

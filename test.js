@@ -6,6 +6,9 @@ var fs = require('fs');
 var path = require('path');
 var requestIp = require('request-ip');
 var mime = require('mime');
+const Gpio = require('onoff').Gpio;
+const LED = new Gpio(18, 'out');
+// n번포트 사용
 
 var spawn = require('child_process').spawn;
 var proc;
@@ -60,7 +63,7 @@ io.on('connection', function (socket) {
         startStreaming(io);
     });
 
-    socket.on('led-sensor', function() {
+    socket.on('checkFinger', function() {
         isLED();
     })
 });
@@ -84,7 +87,7 @@ function startStreaming(io) {
         return;
     }
 
-    var args = ["-w", "640", "-h", "480", "-o", "./stream/image_stream.jpg", "-t", "999999999", "-tl", "50"];
+    var args = ["-w", "640", "-h", "480", "-vf", "-o", "./stream/image_stream.jpg", "-t", "999999999", "-tl", "50"];
     proc = spawn('raspistill', args);
 
     console.log('Watching for changes...');

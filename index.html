@@ -33,10 +33,6 @@
     $('.start').show();
   });
 
-  socket.on('checkFinger', function(url) {
-    socket.emit('led-sensor');
-  })
- 
   /*function startStream() {
     socket.emit('start-stream');
     $('.start').hide();

@@ -26,12 +26,16 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
   var socket = io();
-   socket.emit('start-stream');
+  socket.emit('start-stream');
 
-   socket.on('liveStream', function(url) {
+  socket.on('liveStream', function(url) {
     $('#stream').attr('src', "data:image/jpg;base64," + url.buffer);
     $('.start').show();
   });
+
+  socket.on('checkFinger', function(url) {
+    socket.emit('led-sensor');
+  })
  
   /*function startStream() {
     socket.emit('start-stream');

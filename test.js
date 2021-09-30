@@ -5,17 +5,38 @@ var io = require('socket.io')(http);
 var fs = require('fs');
 var path = require('path');
 var requestIp = require('request-ip');
+var mime = require('mime');
 
 var spawn = require('child_process').spawn;
 var proc;
 
 app.use('/', express.static(path.join(__dirname, 'stream')));
 
-
 app.get('/', function (req, res) {
     console.log("client IP: " +requestIp.getClientIp(req));
     res.sendFile(__dirname + '/index.html');
 });
+
+app.get('/request_behavior', function (req, res) {
+    var imgPath = "./stream/image_stream.jpg";
+    var imgMime = mime.getType(imgPath);
+
+    fs.readFile(imgPath, function (error, data) {
+        if (error) {
+            console.log("file error");
+            res.writeHead(500, { 'Content-Type': 'text/html' });
+            res.end('500 Internal Server ' + error);
+        } else {
+            console.log("file success");
+            // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
+            res.writeHead(200, {
+                "Content-Disposition": "attachment;filename= img_stream.jpg",
+                'Content-Type': imgMime
+            });
+            res.end(data);
+        }
+    });
+})
 
 var sockets = {};
 
@@ -39,6 +60,9 @@ io.on('connection', function (socket) {
         startStreaming(io);
     });
 
+    socket.on('led-sensor', function() {
+        isLED();
+    })
 });
 
 http.listen(3000, function () {
@@ -82,11 +106,13 @@ function base64_encode(file) {
     return new Buffer(bitmap).toString('base64');
 }
 
-// base64포멧의 스트링을 디코딩하여 파일로 쓰는 함수  
-function base64_decode(base64str, file) {
-    // 버퍼 객체를 만든후 첫번째 인자로 base64 스트링, 두번째 인자는 파일 경로를 지정 파일이름만 있으면 프로젝트 root에 생성  
-    var bitmap = new Buffer(base64str, 'base64');
-    // 버퍼의 파일을 쓰기  
-    fs.writeFileSync(file, bitmap);
-    console.log('******** base64로 인코딩되었던 파일 쓰기 성공 ********');
+function isLED() {
+    if (LED.readSync() == 0) {
+        // LED가 꺼져있을 경우
+        console.log("LED ON");
+        LED.writeSync(1);
+    } else {
+        console.log("LED off");
+        LED.writeSync(0);
+    }
 }

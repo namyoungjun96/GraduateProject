@@ -45,6 +45,16 @@ app.get('/request_behavior', function (req, res) {
     });
 })
 
+app.get('/iot_ledOn', function (req, res) {
+    ledOn();
+    res.writeHead(200, {'Content-Type' : 'text/html'});
+})
+
+app.get('/iot_ledOff', function (req, res) {
+    ledOff();
+    res.writeHead(200, {'Content-Type' : 'text/html'});
+})
+
 http.listen(port, function () {
     console.log('listening on * : ' + port);
 });

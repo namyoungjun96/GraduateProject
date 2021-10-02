@@ -1,116 +1,124 @@
-const http = require('http');
+// require module
+const raspberryPiCamera = require('raspberry-pi-camera-native');
 const fs = require('fs');
+const app = require('express')();
+const http = require('http').Server(app);
+const port = 3000;
+const io = require('socket.io')(http);
 const mime = require('mime');
-
 const Gpio = require('onoff').Gpio;
 const LED = new Gpio(18, 'out');
-// n번포트 사용
-
-const RaspiCam = require("raspicam");
-const { sleep } = require('raspicam/lib/fn');
+var cameraCheck = 0;
 
 const cameraOptions = {
-    width: 1920,
-    height: 1080,
-    mode: "video",      // 동영상 촬영 모드
-    output: "/home/pi/temp/video/video.h264"
-    //timeout: ,        촬영 시간
-};
+    width: 1280,
+    height: 720,
+    fps: 5,
+    encoding: 'JPEG',
+    quality: 80
+}
 
-const camera = new RaspiCam(cameraOptions);
+//app.use(express.static(__dirname + '/public'));
 
-const ffmpeg = require("fluent-ffmpeg");
-//to take a snapshot, start a timelapse or video recording
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
 
+app.get('/request_behavior', function (req, res) {
+    var imgPath = "./image_stream.jpg";
+    var imgMime = mime.getType(imgPath);
 
-// start capture
-const videoStream = require('./videoStream');
+    fs.readFile(imgPath, function (error, data) {
+        if (error) {
+            console.log("file error");
+            res.writeHead(500, { 'Content-Type': 'text/html' });
+            res.end('500 Internal Server ' + error);
+        } else {
+            console.log("file success");
+            // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
+            res.writeHead(200, {
+                "Content-Disposition": "attachment;filename=img_stream.jpg",
+                'Content-Type': imgMime
+            });
+            res.end(data);
+        }
+    });
+})
 
-const express = require('express')
-const app = express();
-const port = 3000;
+http.listen(port, function () {
+    console.log('listening on * : ' + port);
+});
 
-videoStream.acceptConnections(app, {
-        width: 1280,
-        height: 720,
-        fps: 16,
-        encoding: 'JPEG',
-        quality: 7 // lower is faster, less quality
-    }, 
-    '/stream.mjpg', false);
+var sockets = {};
 
-app.use(express.static(__dirname+'/public'));
-app.listen(port, () => console.log(`Example app listening on port ${port}! In your web browser, navigate to http://<IP_ADDRESS_OF_THIS_SERVER>:3000`));
+io.on('connection', function (socket) {
 
+    sockets[socket.id] = socket;
+    console.log("Total clients connected : ", Object.keys(sockets).length);
 
-const server = http.createServer()
+    socket.on('disconnect', function () {
+        delete sockets[socket.id];
+        //raspberryPiCamera.stop();
 
-server.on('request', (req, res) => {
-    if (req.url == '/request_behavior') {
-        const date = new Date();
-        const filename = date.getFullYear() + "" + date.getMonth() + "" + date.getDate() + "" + date.getHours() + "" +
-            date.getMinutes() + "" + date.getSeconds();
-        console.log("camera start");
-        console.log("cameraOptions mode : " + cameraOptions.mode);
-        camera.start();
+        // no more sockets, kill the stream
+    });
 
-        camera.once("exit", function () {
-            const inFilename = "/home/pi/temp/video/video.h264";
-            const outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+    socket.on('start-stream', function () {
+        if (app.get('watchingFile')) {
+            io.sockets.emit('liveStream', 'image_stream.jpg?_t=' + (Math.random() * 100000));
+            return;
+        }
 
-            console.log("convert start");
+        if (cameraCheck == 0) {
+            // start capture
+            raspberryPiCamera.start(cameraOptions, function () {
+                console.log("camera start");
+            });
+            cameraCheck = 1;
+        }
 
-            ffmpeg(inFilename)
-                .outputOptions("-c:v", "copy") // this will copy the data instead or reencode it
-                .save(outFilename)
-                .once('end', function () {
-                    console.log('convert end');
+        app.set('watchingFile', true);
 
-                    console.log("push video start");
-                    const videoMime = mime.getType(outFilename);
-                    fs.readFile(outFilename, function (error, data) {
-                        if (error) {
-                            console.log("file error");
-                            res.writeHead(500, { 'Content-Type': 'text/html' });
-                            res.end('500 Internal Server ' + error);
-                        } else {
-                            console.log("file success");
-                            // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
-                            res.writeHead(200, {
-                                "Content-Disposition": "attachment;filename=" + outFilename,
-                                'Content-Type': videoMime
-                            });
-                            res.end(data);
-                        }
-                    });
-                    console.log("push video end");
-                })
-            console.log("camera END ");
-        });
-    }
+        fs.watchFile('./image_stream.jpg', { bigint: false, persistent: true, interval: 200 }, function (current, previous) {
+            // 파일을 base 64로 인코딩 하기  
+            var base64str = base64_encode('./image_stream.jpg');
 
-    else if (req.url == '/on') {
-        console.log("LED start");
-        isLED();
-        console.log("LED end");
+            io.sockets.emit('liveStream', { image: true, buffer: base64str });
+            /*const trade_date = new Date().toLocaleString()
+            checkNum++;
+            console.log(checkNum + ", " + trade_date);*/
+        })
+    });
 
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end("Hello World!");
-    }
+    socket.on('onFinger', function () {
+        ledOn();
+    })
 
-    else {
-        res.writeHead(404, { 'Content-Type': 'text/html' });
-        res.end('404 Page Not Found');
-    }
-}).listen(8080);
+    socket.on('offFinger', function () {
+        ledOff();
+    })
+});
 
-function isLED() {
-    if (LED.readSync() == 0) {
-        // LED가 꺼져있을 경우
-        console.log("LED ON");
-        LED.writeSync(1);
-    } else {
-        console.log("LED off");
-        LED.writeSync(0);
-    }
+// add frame data event listener
+raspberryPiCamera.on('frame', (photo) => {
+    // frameData is a Node.js Buffer
+    // ...
+    fs.writeFile("./image_stream.jpg", photo, (err) => {
+        if (err) return console.error(err);
+    })
+});
+
+function base64_encode(file) {
+    // 바이너리 데이터 읽기 file 에는 파일의 경로를 지정  
+    var bitmap = fs.readFileSync(file);
+    //바이너리 데이터를 base64 포멧으로 인코딩하여 스트링 획등  
+    return new Buffer(bitmap).toString('base64');
+}
+
+function ledOn() {
+    LED.writeSync(1);
+}
+
+function ledOff() {
+    LED.writeSync(0);
 }

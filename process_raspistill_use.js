@@ -6,9 +6,12 @@ var fs = require('fs');
 var path = require('path');
 var requestIp = require('request-ip');
 var mime = require('mime');
+var cameraCheck = 0;
 const Gpio = require('onoff').Gpio;
 const LED = new Gpio(18, 'out');
 // n번포트 사용
+
+var checkNum=0;
 
 var spawn = require('child_process').spawn;
 var proc;
@@ -16,7 +19,7 @@ var proc;
 app.use('/', express.static(path.join(__dirname, 'stream')));
 
 app.get('/', function (req, res) {
-    console.log("client IP: " +requestIp.getClientIp(req));
+    console.log("client IP: " + requestIp.getClientIp(req));
     res.sendFile(__dirname + '/index.html');
 });
 
@@ -33,7 +36,7 @@ app.get('/request_behavior', function (req, res) {
             console.log("file success");
             // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
             res.writeHead(200, {
-                "Content-Disposition": "attachment;filename= img_stream.jpg",
+                "Content-Disposition": "attachment;filename=img_stream.jpg",
                 'Content-Type': imgMime
             });
             res.end(data);
@@ -52,19 +55,19 @@ io.on('connection', function (socket) {
         delete sockets[socket.id];
 
         // no more sockets, kill the stream
-        if (Object.keys(sockets).length == 0) {
-            app.set('watchingFile', false);
-            if (proc) proc.kill();
-            fs.unwatchFile('./stream/image_stream.jpg');
-        }
+        stopStreaming();
     });
 
     socket.on('start-stream', function () {
         startStreaming(io);
     });
 
-    socket.on('checkFinger', function() {
-        isLED();
+    socket.on('onFinger', function () {
+        ledOn();
+    })
+
+    socket.on('offFinger', function () {
+        ledOff();
     })
 });
 
@@ -77,27 +80,34 @@ function stopStreaming() {
         app.set('watchingFile', false);
         if (proc) proc.kill();
         fs.unwatchFile('./stream/image_stream.jpg');
+        cameraCheck = 0;
+        console.log('Watching for changes... : '+cameraCheck);
     }
 }
 
 function startStreaming(io) {
-
     if (app.get('watchingFile')) {
         io.sockets.emit('liveStream', 'image_stream.jpg?_t=' + (Math.random() * 100000));
         return;
     }
 
-    var args = ["-w", "640", "-h", "480", "-vf", "-o", "./stream/image_stream.jpg", "-t", "999999999", "-tl", "50"];
-    proc = spawn('raspistill', args);
+    if (cameraCheck == 0) {
+        var args = ["-w", "640", "-h", "480", "-vf", "-o", "./stream/image_stream.jpg", "-t", "999999999", "-tl", "50"];
+        proc = spawn('raspistill', args);
 
-    console.log('Watching for changes...');
+        cameraCheck = 1;
+    }
 
+    console.log('Watching for changes... : '+cameraCheck);
     app.set('watchingFile', true);
 
-    fs.watchFile('./stream/image_stream.jpg', { bigint: false,persistent: true, interval: 1000}, function (current, previous) {
+    fs.watchFile('./stream/image_stream.jpg', { bigint: false, persistent: true, interval: 1000 }, function (current, previous) {
         // 파일을 base 64로 인코딩 하기  
         var base64str = base64_encode('./stream/image_stream.jpg');
         io.sockets.emit('liveStream', { image: true, buffer: base64str });
+        const trade_date = new Date().toLocaleString()
+        checkNum++;
+        console.log(checkNum + ", " + trade_date);
     })
 }
 
@@ -119,3 +129,12 @@ function isLED() {
         LED.writeSync(0);
     }
 }
+
+function ledOn() {
+    LED.writeSync(1);
+}
+
+function ledOff() {
+    LED.writeSync(0);
+}
+

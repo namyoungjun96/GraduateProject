@@ -3,16 +3,18 @@ const raspberryPiCamera = require('raspberry-pi-camera-native');
 const fs = require('fs');
 const app = require('express')();
 const http = require('http').Server(app);
-const port = 3000;
 const io = require('socket.io')(http);
+const requestIp = require('request-ip');
 const mime = require('mime');
 const Gpio = require('onoff').Gpio;
 const LED = new Gpio(18, 'out');
+
+const port = 3000;
 var cameraCheck = 0;
 
 const cameraOptions = {
-    width: 1280,
-    height: 720,
+    width: 320,
+    height: 240,
     fps: 5,
     encoding: 'JPEG',
     quality: 80
@@ -21,6 +23,7 @@ const cameraOptions = {
 //app.use(express.static(__dirname + '/public'));
 
 app.get('/', (req, res) => {
+    console.log("client IP: " + requestIp.getClientIp(req));
     res.sendFile(__dirname + '/index.html');
 });
 
@@ -74,10 +77,10 @@ io.on('connection', function (socket) {
     });
 
     socket.on('start-stream', function () {
-        if (app.get('watchingFile')) {
+        /*if (app.get('watchingFile')) {
             io.sockets.emit('liveStream', 'image_stream.jpg?_t=' + (Math.random() * 100000));
             return;
-        }
+        }*/
 
         if (cameraCheck == 0) {
             // start capture
@@ -127,8 +130,10 @@ function base64_encode(file) {
 
 function ledOn() {
     LED.writeSync(1);
+    // LED상태 켜기
 }
 
 function ledOff() {
     LED.writeSync(0);
+    // LED상태 끄기
 }

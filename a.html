@@ -25,9 +25,10 @@
     <script src="http://code.jquery.com/jquery.js"></script>
     <!-- Bootstrap JavaScript -->
     <script src="http://netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="http://211.185.104.2:8000/socket.io/socket.io.js"></script>
     <script>
-      var socket = io();
+      var socket = io.connect("http://211.185.104.2:8000/");
+
       socket.emit("start-stream");
 
       socket.on("liveStream", function (url) {

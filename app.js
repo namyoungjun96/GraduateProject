@@ -1,9 +1,15 @@
 // require module
 const raspberryPiCamera = require("raspberry-pi-camera-native");
 const fs = require("fs");
-const app = require("express")();
-const http = require("http").Server(app);
-const io = require("socket.io")(http);
+const cors = require("cors");
+const express = require("express");
+const app = express();
+const server = require("http").createServer(app);
+const io = require("socket.io")(server, {
+  cors: {
+    origin: "*",
+  },
+});
 const requestIp = require("request-ip");
 const mime = require("mime");
 const Gpio = require("onoff").Gpio;
@@ -23,6 +29,19 @@ const cameraOptions = {
 };
 
 //app.use(express.static(__dirname + '/public'));
+
+const whitelist = ["http://localhost:5500"];
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (whitelist.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not Allowed Origin!"));
+    }
+  },
+};
+
+app.use(cors(corsOptions));
 
 app.get("/", (req, res) => {
   console.log("client IP: " + requestIp.getClientIp(req));
@@ -79,7 +98,7 @@ app.get("/led2Off", function (req, res) {
   res.end();
 });
 
-http.listen(port, function () {
+server.listen(port, function () {
   console.log("listening on * : " + port);
 });
 
@@ -88,8 +107,7 @@ var sockets = {};
 io.on("connection", function (socket) {
   sockets[socket.id] = socket;
   console.log("Total clients connected : ", Object.keys(sockets).length);
-
-  socket.emit("storeImage");
+  var i = 0;
 
   socket.on("disconnect", function () {
     delete sockets[socket.id];
@@ -125,6 +143,17 @@ io.on("connection", function (socket) {
         /*const trade_date = new Date().toLocaleString()
             checkNum++;
             console.log(checkNum + ", " + trade_date);*/
+
+        if (i != 10) {
+          socket.broadcast.emit("storeImage", {
+            image: true,
+            buffer: base64str,
+          });
+          console.log("messaging the image");
+          i++;
+        }
+
+        if (i == 10) socket.broadcast.emit("convertToVideo", { id: "jun" });
       }
     );
   });

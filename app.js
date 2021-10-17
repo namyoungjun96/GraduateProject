@@ -1,5 +1,3 @@
-// require module
-const raspberryPiCamera = require("raspberry-pi-camera-native");
 const fs = require("fs");
 const cors = require("cors");
 const express = require("express");
@@ -16,62 +14,116 @@ const Gpio = require("onoff").Gpio;
 const LED1 = new Gpio(23, "out");
 const LED2 = new Gpio(24, "out");
 
+const RaspiCam = require("raspicam");
+
+const videoOptions = {
+  width: 1920,
+  height: 1080,
+  mode: "video", // 동영상 촬영 모드
+  output: "/home/pi/temp/video/video.h264",
+  //timeout: ,        촬영 시간
+};
+
+const video = new RaspiCam(videoOptions);
+
+const ffmpeg = require("fluent-ffmpeg");
+//to take a snapshot, start a timelapse or video recording
+
 const port = 3000;
 var cameraCheck = 0;
 var num = 0;
 
+const { StreamCamera, Codec, SensorMode } = require("pi-camera-connect");
+var videoStream;
+var writeStream;
+
 const cameraOptions = {
-  width: 320,
-  height: 240,
-  fps: 2,
-  encoding: "JPEG",
-  quality: 80,
+  fps: 15,
+  codec: Codec.MJPEG,
+  sensorMode: 5,
+  bitRate: 12000000,
+  //bitRate: 17000000,
 };
 
-//app.use(express.static(__dirname + '/public'));
-
-const whitelist = ["http://localhost:5500"];
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not Allowed Origin!"));
-    }
-  },
-};
-
-app.use(cors(corsOptions));
+app.use(cors());
 
 app.get("/", (req, res) => {
   console.log("client IP: " + requestIp.getClientIp(req));
   res.sendFile(__dirname + "/index.html");
 });
 
-app.get("/request_behavior", function (req, res) {
-  var imgPath = "./image_stream.jpg";
-  var imgMime = mime.getType(imgPath);
+app.post("/request", (req, res) => {
+  streamCamera.stopCapture();
+  //streamCamera.on("end", endCamera);
+  console.log("camera stop");
 
-  fs.readFile(imgPath, function (error, data) {
-    if (error) {
-      console.log("file error");
-      res.writeHead(500, { "Content-Type": "text/html" });
-      res.end("500 Internal Server " + error);
-    } else {
-      console.log("file success");
-      // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
-      res.writeHead(200, {
-        "Content-Disposition": "attachment;filename=img_stream.jpg",
-        "Content-Type": imgMime,
+  const date = new Date();
+  const filename =
+    date.getFullYear() +
+    "" +
+    date.getMonth() +
+    "" +
+    date.getDate() +
+    "" +
+    date.getHours() +
+    "" +
+    date.getMinutes() +
+    "" +
+    date.getSeconds();
+  console.log("camera start");
+  console.log("cameraOptions mode : " + videoOptions.mode);
+  video.start();
+
+  video.once("exit", function () {
+    const inFilename = "/home/pi/temp/video/video.h264";
+    const outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+
+    console.log("convert start");
+
+    ffmpeg(inFilename)
+      .outputOptions("-c:v", "copy") // this will copy the data instead or reencode it
+      .save(outFilename)
+      .once("end", function () {
+        endCamera("stop");
+        console.log("convert end");
+
+        console.log("push video start");
+        const videoMime = mime.getType(outFilename);
+        fs.readFile(outFilename, function (error, data) {
+          if (error) {
+            console.log("file error");
+            res.writeHead(500, { "Content-Type": "text/html" });
+            res.end("500 Internal Server " + error);
+          } else {
+            console.log("file success");
+            // 6. Content-Type 에 4번에서 추출한 mime type 을 입력
+            res.writeHead(200, {
+              "Content-Disposition": "attachment;filename=" + outFilename,
+              "Content-Type": videoMime,
+            });
+            res.end(data);
+          }
+        });
+        console.log("push video end");
       });
-      res.end(data);
-    }
+    console.log("camera END ");
   });
+});
+
+app.post("/led1State", function (req, res) {
+  res.send(String(LED1.readSync()));
+  //res.writeHead(200, { "Content-Type": "text/html" });
+  //res.end();
+});
+
+app.post("/led2State", function (req, res) {
+  res.send(String(LED2.readSync()));
+  //res.writeHead(200, { "Content-Type": "text/html" });
+  //res.end();
 });
 
 app.get("/led1On", function (req, res) {
   console.log("call led1On");
-  console.log("led status :" + LED1.readSync());
   ledOn(LED1);
   res.writeHead(200, { "Content-Type": "text/html" });
   res.end();
@@ -100,6 +152,7 @@ app.get("/led2Off", function (req, res) {
 
 server.listen(port, function () {
   console.log("listening on * : " + port);
+  startCamera();
 });
 
 var sockets = {};
@@ -124,55 +177,28 @@ io.on("connection", function (socket) {
 
     if (cameraCheck == 0) {
       // start capture
-      raspberryPiCamera.start(cameraOptions, function () {
-        console.log("camera start");
-      });
       cameraCheck = 1;
+      streamCamera.startCapture();
+      streamCamera.on("frame", dataToBuffer);
     }
 
     app.set("watchingFile", true);
-
-    fs.watchFile(
-      "./image_stream.jpg",
-      { bigint: false, persistent: true, interval: 500 },
-      function (current, previous) {
-        // 파일을 base 64로 인코딩 하기
-        var base64str = base64_encode("./image_stream.jpg");
-
-        io.sockets.emit("liveStream", { image: true, buffer: base64str });
-        /*const trade_date = new Date().toLocaleString()
-            checkNum++;
-            console.log(checkNum + ", " + trade_date);*/
-
-        if (i != 10) {
-          socket.broadcast.emit("storeImage", {
-            image: true,
-            buffer: base64str,
-          });
-          console.log("messaging the image");
-          i++;
-        }
-
-        if (i == 10) socket.broadcast.emit("convertToVideo", { id: "jun" });
-      }
-    );
   });
 });
 
-// add frame data event listener
-raspberryPiCamera.on("frame", (photo) => {
-  // frameData is a Node.js Buffer
-  // ...
-  fs.writeFile("./image_stream.jpg", photo, (err) => {
-    if (err) return console.error(err);
-  });
-});
+function dataToBuffer(data) {
+  //console.log("data : " + data);
 
-function base64_encode(file) {
-  // 바이너리 데이터 읽기 file 에는 파일의 경로를 지정
-  var bitmap = fs.readFileSync(file);
-  //바이너리 데이터를 base64 포멧으로 인코딩하여 스트링 획등
-  return new Buffer(bitmap).toString("base64");
+  io.sockets.emit("liveStream", {
+    image: true,
+    buffer: data.toString("base64"),
+  });
+}
+
+function endCamera(data) {
+  if (Object.keys(sockets).length > 0) {
+    streamCamera.startCapture();
+  }
 }
 
 function ledOn(led) {
@@ -183,4 +209,11 @@ function ledOn(led) {
 function ledOff(led) {
   led.writeSync(0);
   // LED상태 끄기
+}
+
+function startCamera() {
+  streamCamera = new StreamCamera(cameraOptions);
+  videoStream = streamCamera.createStream();
+  writeStream = fs.createWriteStream("video-stream.h264");
+  videoStream.pipe(writeStream);
 }

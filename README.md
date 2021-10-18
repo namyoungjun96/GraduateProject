@@ -9,7 +9,7 @@ Version : VsCode(Visual Studio Code)
 
 ## Server : Node.Js(Lts : 14.17.6)
 
-socket :
+socket :  
 library : express, fs, gpio(onoff), mime, pi-camera-connect, raspicam, socket.io
 
 ### 추후 추가 예정

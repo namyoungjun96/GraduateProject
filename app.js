@@ -52,31 +52,20 @@ app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
 });
 
-app.post("/request", (req, res) => {
+app.get("/request", (req, res) => {
   streamCamera.stopCapture();
   //streamCamera.on("end", endCamera);
   console.log("camera stop");
 
   const date = new Date();
-  const filename =
-    date.getFullYear() +
-    "" +
-    date.getMonth() +
-    "" +
-    date.getDate() +
-    "" +
-    date.getHours() +
-    "" +
-    date.getMinutes() +
-    "" +
-    date.getSeconds();
+  const filename = "userVideo";
   console.log("camera start");
   console.log("cameraOptions mode : " + videoOptions.mode);
   video.start();
 
   video.once("exit", function () {
     const inFilename = "/home/pi/temp/video/video.h264";
-    const outFilename = "/home/pi/temp/video/" + filename + ".mp4";
+    const outFilename = filename + ".mp4";
 
     console.log("convert start");
 

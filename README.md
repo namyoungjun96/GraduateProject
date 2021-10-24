@@ -9,8 +9,10 @@ Version : VsCode(Visual Studio Code)
 
 ## Server : Node.Js(Lts : 14.17.6)
 
-socket :  
-library : express, fs, gpio(onoff), mime, pi-camera-connect, raspicam, socket.io
+library : express, fs, gpio(onoff), mime, pi-camera-connect, raspicam, socket.io  
+
+WEB : https://github.com/yunyoung-Lee/SpringWebServer  
+AI : https://github.com/ropering/AI_server  
 
 ## API Test : PostMan  
 Web, AI 서버 연동 테스트  

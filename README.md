@@ -12,4 +12,7 @@ Version : VsCode(Visual Studio Code)
 socket :  
 library : express, fs, gpio(onoff), mime, pi-camera-connect, raspicam, socket.io
 
+## API Test : PostMan  
+Web, AI 서버 연동 테스트  
+
 ### 추후 추가 예정

@@ -16,5 +16,3 @@ AI : https://github.com/ropering/AI_server
 
 ## API Test : PostMan  
 Web, AI 서버 연동 테스트  
-
-### 추후 추가 예정
